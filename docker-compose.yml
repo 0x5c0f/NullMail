@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  aether-mail:
+    build: .
+    container_name: aether-mail
+    restart: always
+    ports:
+      - "3000:3000"   # Web 界面 & Socket.io
+      - "25:25"       # SMTP 标准端口 (支持 STARTTLS)
+      - "465:465"     # SMTPS 隐式加密端口 (可选)
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SMTP_PORT=25
+      - SMTPS_PORT=465
+      - SMTP_HOST=0.0.0.0
+      - SMTP_TLS=false # 如果需要 TLS，请改为 true 并挂载证书
+      # - TLS_KEY_PATH=/app/certs/privkey.pem
+      # - TLS_CERT_PATH=/app/certs/fullchain.pem
+      - DOMAIN=yourdomain.com
+      - KEYWORD_BLACKLIST=admin,root,support,postmaster
+    # volumes:
+    #   - ./certs:/app/certs:ro # 挂载 SSL 证书目录
+    networks:
+      - mail-network
+
+networks:
+  mail-network:
+    driver: bridge

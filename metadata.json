@@ -1,0 +1,5 @@
+{
+  "name": "NullMail",
+  "description": "A privacy-focused, stateless, disposable email service with real-time React UI. No storage, no tracking.",
+  "requestFramePermissions": ["notifications"]
+}

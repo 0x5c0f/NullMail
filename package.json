@@ -1,0 +1,40 @@
+{
+  "name": "null-mail",
+  "version": "1.0.0",
+  "description": "A minimalist disposable mail service with real-time React UI.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "vite build && tsc",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "dompurify": "^3.3.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.6.0",
+    "mailparser": "^3.7.1",
+    "postcss": "^8.5.8",
+    "smtp-server": "^3.13.4",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/express": "^4.17.21",
+    "@types/mailparser": "^3.4.4",
+    "@types/node": "^20.12.7",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/smtp-server": "^3.5.10",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5"
+  }
+}
