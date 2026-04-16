@@ -33,6 +33,7 @@ const translations = {
     changeId: "Change ID",
     customId: "Custom ID",
     copy: "Copy email address",
+    copyFailed: "Copy failed. Please copy the address manually.",
     securityNotice: "IMPORTANT SECURITY NOTICE:",
     risk1: "This is a **disposable** service. Emails are not stored on the server or in browser storage. Refreshing this page clears the inbox on this device.",
     risk2: "Anyone with your short ID can access your inbox. Do not use this for sensitive accounts.",
@@ -60,6 +61,7 @@ const translations = {
     changeId: "随机切换",
     customId: "自定义 ID",
     copy: "复制邮箱地址",
+    copyFailed: "复制失败，请手动复制该地址。",
     securityNotice: "重要安全须知：",
     risk1: "这是一个**临时**服务。邮件不会保存在服务器或浏览器存储中，刷新当前页面后收件箱会清空。",
     risk2: "任何知道您 ID 的人都可以访问您的收件箱。请勿用于敏感账户。",
@@ -180,12 +182,48 @@ const App: React.FC = () => {
 
   const mailboxAddress = shortid && mailDomain ? `${shortid}@${mailDomain}` : '';
 
-  const copyToClipboard = () => {
+  const copyWithFallback = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall back to execCommand for browsers or contexts that block Clipboard API.
+      }
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '-9999px';
+    textArea.style.left = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    textArea.setSelectionRange(0, text.length);
+
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      document.body.removeChild(textArea);
+    }
+  };
+
+  const copyToClipboard = async () => {
     if (!mailboxAddress) {
       return;
     }
 
-    navigator.clipboard.writeText(mailboxAddress);
+    const copiedSuccessfully = await copyWithFallback(mailboxAddress);
+
+    if (!copiedSuccessfully) {
+      setError(t.copyFailed);
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
