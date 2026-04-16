@@ -7,6 +7,10 @@ import { isValidShortid, normalizeShortid } from './mailbox.js';
 
 export const mailEmitter = new EventEmitter();
 
+interface SmtpSessionLike {
+  shortids?: string[];
+}
+
 function createSmtpError(message: string, responseCode: number): Error {
   const error = new Error(message) as Error & { responseCode?: number };
   error.responseCode = responseCode;
@@ -41,12 +45,16 @@ function getRecipientAddresses(addressObject: AddressObject | AddressObject[] | 
   return groups.flatMap(group => group.value.map(entry => entry.address || ''));
 }
 
+function dedupeShortids(shortids: string[]): string[] {
+  return Array.from(new Set(shortids));
+}
+
 const createServerOptions = (secure: boolean) => {
   const options: any = {
     authOptional: true,
     size: config.smtp.maxMessageSize,
     hideSTARTTLS: !config.smtp.hasTlsCredentials,
-    onRcptTo(address: { address?: string }, _session: unknown, callback: (error?: Error | null) => void) {
+    onRcptTo(address: { address?: string }, session: SmtpSessionLike, callback: (error?: Error | null) => void) {
       const recipient = typeof address.address === 'string' ? address.address : '';
       const shortid = getRecipientShortid(recipient);
 
@@ -55,9 +63,10 @@ const createServerOptions = (secure: boolean) => {
         return;
       }
 
+      session.shortids = dedupeShortids([...(session.shortids ?? []), shortid]);
       callback();
     },
-    onData(stream: any, _session: any, callback: any) {
+    onData(stream: any, session: SmtpSessionLike, callback: any) {
       simpleParser(stream, (err, mail) => {
         if (err) {
           console.error('Mail parsing error:', err);
@@ -65,17 +74,23 @@ const createServerOptions = (secure: boolean) => {
           return;
         }
 
-        const recipients = Array.from(
-          new Set(
+        const envelopeRecipients = dedupeShortids(session.shortids ?? []);
+        const recipients = envelopeRecipients.length > 0
+          ? envelopeRecipients
+          : dedupeShortids(
             getRecipientAddresses(mail.to)
               .map(address => getRecipientShortid(address))
               .filter((value): value is string => Boolean(value))
-          )
-        );
+          );
 
         if (recipients.length === 0) {
+          console.warn('Mail accepted but no deliverable recipients were found in SMTP envelope or headers.');
           callback();
           return;
+        }
+
+        if (envelopeRecipients.length === 0) {
+          console.warn('Falling back to parsed mail headers for routing because SMTP envelope recipients were unavailable.');
         }
 
         const mailData = {
@@ -96,6 +111,8 @@ const createServerOptions = (secure: boolean) => {
         for (const shortid of recipients) {
           mailEmitter.emit('mail', { shortid, mail: mailData });
         }
+
+        console.log(`Mail routed to ${recipients.length} inbox(es): ${recipients.join(', ')}`);
 
         callback();
       });
