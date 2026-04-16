@@ -3,7 +3,6 @@ import http, { IncomingMessage } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { config } from './config.js';
 import { setupSocketIO } from './modules/io.js';
 import { startSmtp } from './modules/smtp.js';
@@ -131,6 +130,7 @@ async function startServer() {
 
   // Vite integration for development
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
