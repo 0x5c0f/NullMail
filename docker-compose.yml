@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
-  aether-mail:
+  null-mail:
     build: .
-    container_name: aether-mail
+    container_name: null-mail
     restart: always
     ports:
       - "3000:3000"   # Web 界面 & Socket.io
@@ -15,13 +13,15 @@ services:
       - SMTP_PORT=25
       - SMTPS_PORT=465
       - SMTP_HOST=0.0.0.0
-      - SMTP_TLS=false # 如果需要 TLS，请改为 true 并挂载证书
+      - SMTP_MAX_SIZE=10485760
       # - TLS_KEY_PATH=/app/certs/privkey.pem
       # - TLS_CERT_PATH=/app/certs/fullchain.pem
       - DOMAIN=yourdomain.com
+      # 如果 Web 前端和 Socket.IO 不同源部署，请填写前端完整 origin
+      # - ALLOWED_ORIGINS=https://app.yourdomain.com
       - KEYWORD_BLACKLIST=admin,root,support,postmaster
     # volumes:
-    #   - ./certs:/app/certs:ro # 挂载 SSL 证书目录
+    #   - ./certs:/app/certs:ro # 挂载 TLS 证书目录
     networks:
       - mail-network
 

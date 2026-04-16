@@ -1,5 +1,5 @@
 import express from 'express';
-import http from 'http';
+import http, { IncomingMessage } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,39 +11,111 @@ import { startSmtp } from './modules/smtp.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function normalizeOrigin(origin: string): string | null {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    return url.origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function inferRequestOrigin(req: IncomingMessage): string | null {
+  const host = typeof req.headers.host === 'string' ? req.headers.host : undefined;
+  if (!host) {
+    return null;
+  }
+
+  const forwardedProtoHeader = req.headers['x-forwarded-proto'];
+  const forwardedProto = Array.isArray(forwardedProtoHeader)
+    ? forwardedProtoHeader[0]
+    : forwardedProtoHeader;
+  const protocol = forwardedProto?.split(',')[0].trim() || 'http';
+
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
+function buildAllowedOrigins(): Set<string> {
+  const allowed = new Set<string>();
+
+  for (const origin of config.web.allowedOrigins) {
+    const normalized = normalizeOrigin(origin);
+    if (normalized) {
+      allowed.add(normalized);
+    }
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    const devOrigins = [
+      `http://localhost:${config.web.port}`,
+      `http://127.0.0.1:${config.web.port}`,
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ];
+
+    for (const origin of devOrigins) {
+      const normalized = normalizeOrigin(origin);
+      if (normalized) {
+        allowed.add(normalized);
+      }
+    }
+  }
+
+  return allowed;
+}
+
+function isAllowedSocketOrigin(origin: string | undefined, req: IncomingMessage, allowedOrigins: Set<string>): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) {
+    return false;
+  }
+
+  if (allowedOrigins.has(normalizedOrigin)) {
+    return true;
+  }
+
+  const requestOrigin = inferRequestOrigin(req);
+  return requestOrigin === normalizedOrigin;
+}
+
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
+  const allowedOrigins = buildAllowedOrigins();
 
-  // CORS Configuration
-  const envOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [];
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'accelerometer=(), camera=(), geolocation=(), microphone=()');
+    next();
+  });
   
   const io = new Server(server, {
     cors: {
       origin: (origin, callback) => {
-        // 1. Always allow if origin is missing (e.g. same-origin or non-browser)
-        if (!origin) return callback(null, true);
-        
-        // 2. Check whitelist (localhost, APP_URL, user-defined)
-        const whitelist = [
-          process.env.APP_URL,
-          'http://localhost:3000',
-          'http://127.0.0.1:3000',
-          ...envOrigins
-        ].filter(Boolean) as string[];
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
 
-        if (whitelist.some(w => w.includes(origin))) return callback(null, true);
-
-        // 3. Automatically allow platform domains (*.run.app)
-        if (origin.endsWith('.run.app')) return callback(null, true);
-
-        // 4. Default to allow all if no strict origins are set, otherwise deny
-        if (envOrigins.length === 0) return callback(null, true);
-        
-        callback(null, false); // Deny others if whitelist is active
+        const normalizedOrigin = normalizeOrigin(origin);
+        callback(null, Boolean(normalizedOrigin && allowedOrigins.has(normalizedOrigin)));
       },
-      methods: ["GET", "POST"]
-    }
+      methods: ['GET', 'POST'],
+    },
+    allowRequest: (req, callback) => {
+      const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+      callback(null, isAllowedSocketOrigin(origin, req, allowedOrigins));
+    },
   });
 
   // Setup Socket.io
@@ -51,7 +123,10 @@ async function startServer() {
 
   // API Routes
   app.get('/api/config', (req, res) => {
-    res.json({ securityNotice: config.securityNotice });
+    res.json({
+      mailDomain: config.web.domain,
+      securityNotice: config.securityNotice,
+    });
   });
 
   // Vite integration for development
@@ -59,7 +134,8 @@ async function startServer() {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
-      root: path.join(__dirname, '../'), // Point to project root for vite.config.ts
+      configFile: path.join(__dirname, '../vite.config.ts'),
+      root: path.join(__dirname, 'client'),
     });
     app.use(vite.middlewares);
   } else {

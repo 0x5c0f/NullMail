@@ -10,13 +10,15 @@ export interface AppConfig {
     port: number;
     smtpsPort: number;
     host: string;
-    tls: boolean;
     keyPath?: string;
     certPath?: string;
+    hasTlsCredentials: boolean;
+    maxMessageSize: number;
   };
   web: {
     port: number;
     domain: string;
+    allowedOrigins: string[];
   };
   blacklist: string[];
   securityNotice?: string[];

@@ -19,6 +19,11 @@ interface MailData {
   attachments?: any[];
 }
 
+interface ClientConfigResponse {
+  mailDomain: string;
+  securityNotice?: string[];
+}
+
 // i18n Translations
 const translations = {
   en: {
@@ -29,7 +34,7 @@ const translations = {
     customId: "Custom ID",
     copy: "Copy email address",
     securityNotice: "IMPORTANT SECURITY NOTICE:",
-    risk1: "This is a **disposable** service. Emails are stored in your browser's local storage for persistence across refreshes.",
+    risk1: "This is a **disposable** service. Emails are not stored on the server or in browser storage. Refreshing this page clears the inbox on this device.",
     risk2: "Anyone with your short ID can access your inbox. Do not use this for sensitive accounts.",
     risk3: "This service is for testing and temporary use only. No long-term cloud storage is provided.",
     inbox: "Incoming Messages",
@@ -56,7 +61,7 @@ const translations = {
     customId: "自定义 ID",
     copy: "复制邮箱地址",
     securityNotice: "重要安全须知：",
-    risk1: "这是一个**临时**服务。邮件保存在浏览器本地存储中，刷新页面不会丢失。",
+    risk1: "这是一个**临时**服务。邮件不会保存在服务器或浏览器存储中，刷新当前页面后收件箱会清空。",
     risk2: "任何知道您 ID 的人都可以访问您的收件箱。请勿用于敏感账户。",
     risk3: "本服务仅供测试和临时使用。不提供长期云端存储。",
     inbox: "收件箱",
@@ -88,14 +93,17 @@ const App: React.FC = () => {
   const [isEditingId, setIsEditingId] = useState(false);
   const [editIdValue, setEditIdValue] = useState('');
   const [customSecurityNotice, setCustomSecurityNotice] = useState<string[] | null>(null);
+  const [mailDomain, setMailDomain] = useState('');
+  const currentShortidRef = useRef('');
 
   const t = translations[lang];
 
   // Fetch Custom Config
   useEffect(() => {
     fetch('/api/config')
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ClientConfigResponse>)
       .then(data => {
+        setMailDomain(data.mailDomain);
         if (data.securityNotice && Array.isArray(data.securityNotice)) {
           setCustomSecurityNotice(data.securityNotice);
         }
@@ -115,23 +123,6 @@ const App: React.FC = () => {
     localStorage.setItem('lang', lang);
   }, [lang]);
 
-  // Load Mails from LocalStorage
-  useEffect(() => {
-    const savedMails = localStorage.getItem('cached_mails');
-    if (savedMails) {
-      try {
-        setMails(JSON.parse(savedMails));
-      } catch (e) {
-        console.error("Failed to parse cached mails");
-      }
-    }
-  }, []);
-
-  // Sync Mails to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('cached_mails', JSON.stringify(mails));
-  }, [mails]);
-
   useEffect(() => {
     const newSocket = io();
     setSocket(newSocket);
@@ -147,6 +138,12 @@ const App: React.FC = () => {
     });
 
     newSocket.on('shortid_ready', (id: string) => {
+      if (currentShortidRef.current && currentShortidRef.current !== id) {
+        setMails([]);
+        setSelectedMail(null);
+      }
+
+      currentShortidRef.current = id;
       setShortid(id);
       localStorage.setItem('shortid', id);
       setError(null);
@@ -156,7 +153,7 @@ const App: React.FC = () => {
     newSocket.on('mail', (mail: MailData) => {
       setMails(prev => {
         const updated = [mail, ...prev];
-        // Keep only last 50 mails to avoid localStorage bloat
+        // Keep only the last 50 mails to avoid unbounded in-memory growth.
         return updated.slice(0, 50);
       });
       
@@ -181,9 +178,14 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const mailboxAddress = shortid && mailDomain ? `${shortid}@${mailDomain}` : '';
+
   const copyToClipboard = () => {
-    const email = `${shortid}@${window.location.hostname}`;
-    navigator.clipboard.writeText(email);
+    if (!mailboxAddress) {
+      return;
+    }
+
+    navigator.clipboard.writeText(mailboxAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -192,21 +194,22 @@ const App: React.FC = () => {
     const randomId = Math.random().toString(36).substring(2, 10);
     socket?.emit('set shortid', randomId);
     setMails([]);
-    localStorage.removeItem('cached_mails');
     setSelectedMail(null);
   };
 
   const handleCustomIdSubmit = () => {
-    if (editIdValue.length < 3 || editIdValue.length > 20 || !/^[a-z0-9]+$/i.test(editIdValue)) {
+    const normalizedId = editIdValue.trim().toLowerCase();
+
+    if (normalizedId.length < 3 || normalizedId.length > 20 || !/^[a-z0-9]+$/i.test(normalizedId)) {
       setError(t.invalidId);
       return;
     }
-    socket?.emit('set shortid', editIdValue.toLowerCase());
+
+    socket?.emit('set shortid', normalizedId);
   };
 
   const clearAllMails = () => {
     setMails([]);
-    localStorage.removeItem('cached_mails');
     setSelectedMail(null);
   };
 
@@ -262,11 +265,6 @@ const App: React.FC = () => {
     }
   }, [selectedMail]);
 
-  const sanitizeHtml = (html: string) => {
-    // This is now just a wrapper around DOMPurify for consistency
-    return DOMPurify.sanitize(html);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
       <GitHubCorner href="https://github.com/0x5c0f/NullMail.git" />
@@ -315,7 +313,7 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <span className="text-2xl md:text-3xl font-mono font-medium text-gray-800 break-all">
-                      {shortid}@{window.location.hostname}
+                      {mailboxAddress || `${shortid}@...`}
                     </span>
                     <div className="flex items-center gap-1">
                       <button 
