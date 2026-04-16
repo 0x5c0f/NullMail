@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { Mail, RefreshCw, Copy, Trash2, ChevronRight, Inbox, Clock, User, Tag, Globe, Edit3, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import GitHubCorner from './components/GitHubCorner';
+import NullMailLogo from './components/NullMailLogo';
 import DOMPurify from 'dompurify';
 
 interface MailHeader {
@@ -55,7 +56,7 @@ const translations = {
     invalidId: "Invalid ID (3-20 chars, alphanumeric only)"
   },
   zh: {
-    title: "空邮件",
+    title: "NullMail",
     subtitle: "v1.0",
     tempAddress: "您的临时邮箱地址",
     changeId: "随机切换",
@@ -308,12 +309,7 @@ const App: React.FC = () => {
       <GitHubCorner href="https://github.com/0x5c0f/NullMail.git" />
       {/* Header / Branding */}
       <header className="py-6 px-6 flex items-center justify-between max-w-4xl w-full mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-200">
-            <Mail size={24} />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 italic">{t.title} <span className="text-indigo-600 font-mono text-sm not-italic ml-1 opacity-70">{t.subtitle}</span></h1>
-        </div>
+        <NullMailLogo subtitle={t.subtitle} />
 
         <button 
           onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
